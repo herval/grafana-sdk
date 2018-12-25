@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/grafana-tools/sdk"
+	"github.com/herval/grafana-sdk"
 )
 
 func TestStackVal_UnmarshalJSON_GotTrue(t *testing.T) {
@@ -297,6 +297,28 @@ func TestGraph_SetTargetUpdate(t *testing.T) {
 	}
 	if graph.GraphPanel.Targets[0].RefID != "A" {
 		t.Errorf("should be equal A but %s", graph.GraphPanel.Targets[0].RefID)
+	}
+}
+
+func TestMarshallingCustomFIelds(t *testing.T) {
+	ta := &sdk.Target{
+		CustomFields: map[string]interface{}{"foo": "bar"},
+	}
+
+	d, err := json.Marshal(ta)
+	if err != nil {
+		t.Errorf("marshalling failed: %v", err)
+	}
+	// fmt.Println(string(d))
+
+	var tb *sdk.Target
+	err = json.Unmarshal(d, &tb)
+	if err != nil {
+		t.Errorf("unmarshalling failed: %v", err)
+	}
+
+	if tb.CustomFields["foo"] != "bar" {
+		t.Errorf("fields not unmarshalled correctly: %v", tb.CustomFields)
 	}
 }
 

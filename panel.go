@@ -21,6 +21,8 @@ package sdk
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
+	"strings"
 )
 
 // Each panel may be one of these types.
@@ -315,6 +317,79 @@ type Target struct {
 
 	// For Graphite
 	Target string `json:"target,omitempty"`
+
+	// For any custom type
+	CustomFields map[string]interface{} `json:"-"`
+}
+
+func (t Target) MarshalJSON() ([]byte, error) {
+	// Turn t into a map
+	type T_ Target
+	b, err := json.Marshal(T_(t))
+	if err != nil {
+		return nil, err
+	}
+
+	var m map[string]json.RawMessage
+	err = json.Unmarshal(b, &m)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add CustomFields to the map
+	for k, v := range t.CustomFields {
+		// if overriding struct fields, skip it
+		if _, ok := m[k]; ok {
+			continue
+		}
+		b, _ = json.Marshal(v)
+		m[k] = b
+	}
+
+	return json.Marshal(m)
+}
+
+func (t *Target) UnmarshalJSON(b []byte) error {
+	type T_ *Target // will stackoverflow if we don't define a type alias
+	err := json.Unmarshal(b, T_(t))
+	if err != nil {
+		return err
+	}
+
+	var otherFields map[string]json.RawMessage
+
+	// ignore everything that maps to a declared field
+	objValue := reflect.ValueOf(t).Elem()
+	knownFields := map[string]reflect.Value{}
+	for i := 0; i != objValue.NumField(); i++ {
+		jsonName := strings.Split(objValue.Type().Field(i).Tag.Get("json"), ",")[0]
+		knownFields[jsonName] = objValue.Field(i)
+	}
+
+	err = json.Unmarshal(b, &otherFields)
+	if err != nil {
+		return err
+	}
+
+	for key, chunk := range otherFields {
+		if field, found := knownFields[key]; found {
+			err = json.Unmarshal(chunk, field.Addr().Interface())
+			if err != nil {
+				return err
+			}
+			delete(otherFields, key)
+		}
+	}
+
+	// map custom fields to the CustomFields field
+	t.CustomFields = map[string]interface{}{}
+	for k, v := range otherFields {
+		var d interface{}
+		err = json.Unmarshal(v, &d)
+		t.CustomFields[k] = d
+	}
+
+	return nil
 }
 
 type MapType struct {
